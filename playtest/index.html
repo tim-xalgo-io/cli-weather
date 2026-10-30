@@ -1,0 +1,1231 @@
+<meta charset="utf-8">
+<title>Stockholm Rain Matrix</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: the LED matrix is the stage on the left; the device's controls and the playtest rack sit on the right and stack under it on phones. */
+:root {
+  color-scheme: dark;
+  --bg: #0c0f13;           /* room around the matrix */
+  --panel: #141920;        /* control rack */
+  --line: #252d38;         /* rack seams */
+  --fg: #e2e7ee;
+  --muted: #8a95a3;
+  --accent: #5fb4ff;       /* radar blue: the slider, switch and headings */
+  --accent-dim: #213a55;
+  --town: #3cff6e;         /* town LED green */
+  --bezel: #050608;        /* matrix PCB */
+  --font-display: "Chakra Petch", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+html, body { height: auto; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+}
+.app {
+  max-width: 1060px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+header.title-bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+h1 span { color: var(--accent); }
+.subtitle { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bezel {
+  background: var(--bezel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  max-width: 100%;
+}
+#matrix { display: block; width: 100%; height: auto; aspect-ratio: 1 / 1; max-width: 100%; outline: none; }
+.status-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 520px) { .status-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.status-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono); }
+.status-value { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.rack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.module {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.module h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0;
+}
+.reading { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 0; font-variant-numeric: tabular-nums; }
+.reading-hint { color: var(--muted); margin: 0; }
+
+/* Spring-return fader */
+#fader { display: block; width: 100%; height: 76px; touch-action: none; cursor: grab; }
+#fader:active { cursor: grabbing; }
+.fader-scale { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fader-scale b { color: var(--fg); font-weight: 500; }
+
+/* Two-state toggle switch */
+.switch {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+.switch-label { color: var(--muted); cursor: pointer; }
+.switch-label.left { text-align: right; }
+.switch-label.on { color: var(--accent); }
+#mode-switch {
+  position: relative;
+  width: 64px;
+  height: 30px;
+  border-radius: 15px;
+  border: 1px solid var(--line);
+  background: var(--bezel);
+  cursor: pointer;
+  padding: 0;
+}
+#mode-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform 90ms ease-out;
+}
+#mode-switch[aria-checked="true"]::after { transform: translateX(34px); }
+#mode-switch:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { #mode-switch::after { transition: none; } }
+
+.keys { font-family: var(--font-mono); font-size: 12px; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+.keys dt { color: var(--fg); }
+.keys dd { margin: 0; }
+
+.setting { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+.setting label { font-size: 13px; }
+.setting output { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.setting input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.setting select { grid-column: 1 / -1; }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.toggle input { accent-color: var(--accent); }
+select {
+  width: 100%;
+  background: var(--bezel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--font-body);
+}
+button {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.15); }
+.button-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.legend span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 4px 6px; border-bottom: 1px solid var(--line); }
+td { padding: 4px; border-bottom: 1px solid var(--line); }
+td.number, th.number { text-align: right; }
+.note { color: var(--muted); font-size: 12px; margin: 0; }
+.note a { color: var(--accent); }
+</style>
+
+<div class="app">
+  <header class="title-bar">
+    <h1>Stockholm <span>Rain</span> Matrix</h1>
+    <div class="subtitle">Playtest build · 64 × 64 LED matrix · 1 km per LED · spring fader + mode switch</div>
+  </header>
+
+  <section class="stage" aria-label="LED matrix">
+    <div class="bezel">
+      <canvas id="matrix" tabindex="0" aria-label="Simulated 64 by 64 LED rain map of Stockholm. Hold left or right arrow to move the fader, S to flip the mode switch."></canvas>
+    </div>
+    <div class="status-row">
+      <div class="status-cell"><span class="label">Showing</span><span class="status-value" id="hud-time">—</span></div>
+      <div class="status-cell"><span class="label">Offset</span><span class="status-value" id="hud-offset">now</span></div>
+      <div class="status-cell"><span class="label">Data</span><span class="status-value" id="hud-source">—</span></div>
+      <div class="status-cell"><span class="label">Est. draw @ 5 V</span><span class="status-value" id="hud-power">0.00 A</span></div>
+    </div>
+  </section>
+
+  <aside class="rack">
+    <div class="module">
+      <h2>Fader</h2>
+      <p class="reading" id="fader-reading">Now</p>
+      <canvas id="fader" aria-label="Spring-return fader. Drag left for the past, right for the future. It springs back to now when released."></canvas>
+      <div class="fader-scale" id="fader-scale"><span>−90 min</span><b>now</b><span>+90 min</span></div>
+      <p class="reading-hint" id="fader-hint">Drag the knob. Let go and it springs back to now.</p>
+    </div>
+
+    <div class="module">
+      <h2>Mode switch</h2>
+      <div class="switch">
+        <span class="switch-label left on" id="switch-label-short">±90 min</span>
+        <button type="button" id="mode-switch" role="switch" aria-checked="false" aria-label="Time span: off is plus or minus 90 minutes, on is 3 days"></button>
+        <span class="switch-label" id="switch-label-long">3 days</span>
+      </div>
+      <dl class="keys">
+        <dt>← → / A D</dt><dd>Push the fader (release to spring back)</dd>
+        <dt>S</dt><dd>Flip the mode switch</dd>
+        <dt>Gamepad</dt><dd>Left stick = fader, any button = switch</dd>
+      </dl>
+    </div>
+
+    <div class="module">
+      <h2>Playtest</h2>
+      <div class="setting">
+        <label for="setting-scenario">Weather data</label>
+        <span></span>
+        <select id="setting-scenario">
+          <option value="real">Real MET Norway data</option>
+          <option value="front">Synthetic: rain front from the west</option>
+          <option value="showers">Synthetic: scattered showers</option>
+          <option value="storm">Synthetic: thunderstorm cells</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label for="setting-brightness">Matrix brightness cap</label>
+        <output id="output-brightness" for="setting-brightness"></output>
+        <input type="range" id="setting-brightness" min="0.1" max="1" step="0.05">
+      </div>
+      <div class="setting">
+        <label for="setting-towns">Town LED brightness</label>
+        <output id="output-towns" for="setting-towns"></output>
+        <input type="range" id="setting-towns" min="0" max="1" step="0.05">
+      </div>
+      <div class="setting">
+        <label for="setting-coast">Land glow</label>
+        <output id="output-coast" for="setting-coast"></output>
+        <input type="range" id="setting-coast" min="0" max="0.4" step="0.01">
+      </div>
+      <div class="setting">
+        <label for="setting-town-rain">Town LED under rain</label>
+        <span></span>
+        <select id="setting-town-rain">
+          <option value="blink">Blink between green and rain</option>
+          <option value="town">Stay green</option>
+          <option value="rain">Show the rain</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label for="setting-curve">Fader response</label>
+        <span></span>
+        <select id="setting-curve">
+          <option value="linear">Linear</option>
+          <option value="fine">Fine near now (squared)</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label for="setting-return">Spring return time</label>
+        <output id="output-return" for="setting-return"></output>
+        <input type="range" id="setting-return" min="0.05" max="1.5" step="0.05">
+      </div>
+      <div class="setting">
+        <label for="setting-deadzone">Fader dead zone</label>
+        <output id="output-deadzone" for="setting-deadzone"></output>
+        <input type="range" id="setting-deadzone" min="0" max="0.2" step="0.01">
+      </div>
+      <div class="setting">
+        <label for="setting-readout">Time readout on matrix</label>
+        <span></span>
+        <select id="setting-readout">
+          <option value="both">Offset left, clock right (+35' · 16:40)</option>
+          <option value="offset">Offset only (+35', +12H)</option>
+          <option value="clock">Clock only (16:40)</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+      <label class="toggle"><input type="checkbox" id="setting-timebar" checked> Time bar on the top row</label>
+      <label class="toggle"><input type="checkbox" id="setting-blend" checked> Blend between frames</label>
+      <div class="button-row">
+        <button type="button" id="reload-button">Reload data</button>
+      </div>
+    </div>
+
+    <div class="module">
+      <h2>Rain colours</h2>
+      <div class="legend" id="legend"></div>
+      <p class="note">LED colour per rain rate in mm/h. Land glows faint amber and water stays dark, so blue always means rain. Green dots are the larger towns; Sergels torg, at the centre, is the brightest.</p>
+    </div>
+
+    <div class="module">
+      <h2>Towns on the map</h2>
+      <div style="overflow-x: auto">
+        <table>
+          <thead><tr><th>Town</th><th class="number">Col</th><th class="number">Row</th><th class="number">Rain</th></tr></thead>
+          <tbody id="town-body"></tbody>
+        </table>
+      </div>
+      <p class="note">LED column and row, 0..63 from the top left. Rain is the rate shown on that LED right now.</p>
+    </div>
+
+    <div class="module">
+      <h2>Data budget</h2>
+      <p class="note" id="budget-note">—</p>
+      <p class="note">Radar nowcast and MET Nordic forecast by <a href="https://www.met.no/en" target="_blank" rel="noopener">MET Norway</a>, CC BY 4.0.</p>
+    </div>
+  </aside>
+</div>
+
+<script src="snapshot.js"></script>
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Hardware model
+// ---------------------------------------------------------------------------
+
+const MATRIX_SIZE = 64; // LEDs per side; one LED is one 1 km radar cell
+const MILLIAMPS_PER_CHANNEL = 20; // one WS2812 colour channel draws about 20 mA at full brightness
+const IDLE_MILLIAMPS_PER_LED = 1; // a dark WS2812 still draws about 1 mA for its controller
+const DISPLAY_GAMMA = 0.7; // brighten dim values on screen, because real LEDs look brighter than linear at low PWM
+const LED_DOT_RADIUS = 0.36; // LED dot radius as a fraction of the LED pitch
+const DARK_LED_COLOUR = "#141920"; // unlit LED lens
+const BOARD_COLOUR = "#050608"; // PCB between the LEDs
+const BYTES_PER_FRAME = MATRIX_SIZE * MATRIX_SIZE; // one byte per LED: mm/h × 10, 255 = no radar coverage
+
+// LED colours as [red, green, blue], 0..255. Light rain is dim, heavy rain is bright, as on a real matrix.
+const RAIN_STEPS = [ // lower bound in mm/h, e.g. 0.5 → the second colour from 0.5 up to 1 mm/h
+  { minimum: 0.1, label: "0.1", color: [0, 26, 80] },
+  { minimum: 0.5, label: "0.5", color: [0, 60, 170] },
+  { minimum: 1, label: "1", color: [10, 110, 255] },
+  { minimum: 2, label: "2", color: [70, 70, 255] },
+  { minimum: 5, label: "5", color: [160, 40, 255] },
+  { minimum: 10, label: "10+", color: [255, 40, 170] },
+];
+const TOWN_GREEN = [30, 255, 70];
+const LAND_AMBER = [90, 55, 12]; // scaled down by the land glow setting; water stays dark, so blue only ever means rain
+const NO_COVERAGE_GREY = [14, 14, 14];
+const READOUT_AMBER = [255, 170, 40];
+const TIMEBAR_PAST = [120, 120, 120];
+const TIMEBAR_FUTURE = [0, 140, 200];
+const TIMEBAR_CURSOR = [255, 255, 255];
+
+// Large towns only (own centres, not inner suburbs), as LED [column, row]: grid.latlon_to_rc(lat, lon) minus the window origin.
+const TOWNS = [
+  { name: "Stockholm (Sergels torg)", column: 32, row: 32, isCentre: true },
+  { name: "Södertälje", column: 8, row: 48 },
+  { name: "Täby", column: 32, row: 20 },
+  { name: "Upplands Väsby", column: 22, row: 12 },
+  { name: "Åkersberga", column: 45, row: 15 },
+  { name: "Haninge", column: 37, row: 50 },
+];
+
+// ---------------------------------------------------------------------------
+// Time spans: the mode switch picks one
+// ---------------------------------------------------------------------------
+
+const SHORT_SPAN_MINUTES = 90; // ±90 min: radar for the past, nowcast for the future, 5-minute frames
+const RADAR_STEP_MINUTES = 5;
+const LONG_SPAN_HOURS = 56; // 3-day mode: MET Nordic forecast reaches +56 h in hourly frames; forward only, like yr.no
+
+// ---------------------------------------------------------------------------
+// MET Norway access (works when the page is opened from disk or a local server;
+// the artifact viewer's sandbox blocks other hosts, so the page falls back to snapshot.js)
+// ---------------------------------------------------------------------------
+
+const THREDDS = "https://thredds.met.no/thredds";
+const RADAR_CATALOG = `${THREDDS}/catalog/radarnowcasting/catalog.xml`;
+const NORDIC_PATH = "metpplatest/met_forecast_1_0km_nordic_latest.nc";
+const WINDOW_ORIGIN = [1497, 938]; // radar grid [row, col] of LED (0, 0): Sergels torg at (1529, 970) minus 32
+const NORDIC_ROW_FLIP = 2229; // MET Nordic rows run south→north: Nordic row = 2229 - radar row
+const NORDIC_COL_SHIFT = 101; // Nordic column = radar column + 101
+const LIVE_TIMEOUT_MS = 8000;
+const LIVE_REFRESH_MS = 5 * 60 * 1000; // new radar run every 5 minutes
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+const settings = {
+  scenario: "real",
+  brightness: 0.6, // global brightness cap, 0..1, e.g. 0.6
+  townBrightness: 0.15, // town LED intensity, e.g. 0.15; the centre town glows twice as bright
+  landGlow: 0.12, // land LEDs glow at this share of LAND_AMBER, e.g. 0.12
+  townUnderRain: "blink",
+  curve: "linear",
+  returnSeconds: 0.25, // time for the spring to bring the knob back to centre, e.g. 0.25
+  deadZone: 0.04, // fader travel around centre that still reads "now", e.g. 0.04
+  readout: "both", // "both", "offset", "clock" or "off"
+  timeBar: true,
+  blend: true,
+};
+
+const device = {
+  isLongMode: false, // false = ±90 min, true = 3 days
+  faderPosition: 0, // knob position -1..1 as the ADC would read it, e.g. -0.35
+  faderVelocity: 0, // knob speed in travel per second, used by the spring
+  modeFlashUntil: 0, // clock time until which the matrix shows the new mode name
+  clock: 0, // seconds since boot
+};
+
+const weather = {
+  source: "loading", // "live", "snapshot", "synthetic"
+  sourceNote: "",
+  radarTimes: [], // Date per 5-minute frame, -90 … +90 min
+  radarFrames: [], // Float32Array(4096) of mm/h per frame, NaN = no coverage
+  forecastTimes: [], // Date per hourly frame, +1 … +56 h
+  forecastFrames: [],
+  land: new Uint8Array(BYTES_PER_FRAME), // 1 = land, 0 = water
+};
+
+const framebuffer = new Float32Array(MATRIX_SIZE * MATRIX_SIZE * 3); // RGB per LED, 0..255
+let shownRain = new Float32Array(BYTES_PER_FRAME); // the rain field currently on the matrix, for the town table
+
+// ---------------------------------------------------------------------------
+// Data: snapshot decode, live fetch, synthetic scenarios
+// ---------------------------------------------------------------------------
+
+function decodeFrames(base64Text, count) {
+  const bytes = Uint8Array.from(atob(base64Text), (character) => character.charCodeAt(0));
+  return Array.from({ length: count }, (_, frameIndex) => {
+    const frame = new Float32Array(BYTES_PER_FRAME);
+    for (let index = 0; index < BYTES_PER_FRAME; index++) {
+      const value = bytes[frameIndex * BYTES_PER_FRAME + index];
+      frame[index] = value === 255 ? NaN : value / 10;
+    }
+    return frame;
+  });
+}
+
+function loadSnapshot() {
+  const snapshot = window.STOCKHOLM_SNAPSHOT;
+  if (!snapshot) return false; // snapshot.js missing
+  weather.radarTimes = snapshot.radar.times.map((text) => new Date(text));
+  weather.radarFrames = decodeFrames(snapshot.radar.frames, snapshot.radar.times.length);
+  weather.forecastTimes = snapshot.forecast.times.map((text) => new Date(text));
+  weather.forecastFrames = decodeFrames(snapshot.forecast.frames, snapshot.forecast.times.length);
+  weather.land = Uint8Array.from(atob(snapshot.land), (character) => character.charCodeAt(0));
+  weather.source = "snapshot";
+  const captured = new Date(snapshot.capturedAt);
+  weather.sourceNote = `Snapshot ${captured.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;
+  return true;
+}
+
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LIVE_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`${response.status} for ${url}`);
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Decode a DAP2 binary reply holding one Float32 array; values ≥ 1e30 are fill (NaN). */
+function parseDods(buffer, expectedCount) {
+  const bytes = new Uint8Array(buffer);
+  const marker = [10, 68, 97, 116, 97, 58, 10]; // "\nData:\n"
+  let start = -1;
+  for (let index = 0; index + marker.length <= bytes.length; index++) {
+    if (marker.every((code, offset) => bytes[index + offset] === code)) { start = index + marker.length; break; }
+  }
+  if (start < 0) throw new Error("not a DAP2 reply");
+  const view = new DataView(buffer, start);
+  const count = view.getInt32(0, false);
+  if (count !== expectedCount) throw new Error(`expected ${expectedCount} values, got ${count}`);
+  const values = new Float32Array(count);
+  for (let index = 0; index < count; index++) {
+    const value = view.getFloat32(8 + index * 4, false);
+    values[index] = value >= 1e30 ? NaN : value;
+  }
+  return values;
+}
+
+function dapUrl(path, variable, ranges) {
+  const constraint = `${variable}.${variable}` + ranges.map(([first, last]) => `%5B${first}:${last}%5D`).join("");
+  return `${THREDDS}/dodsC/${path}.dods?${constraint}`;
+}
+
+async function loadLive() {
+  const catalog = await (await fetchWithTimeout(RADAR_CATALOG)).text();
+  const runs = [...catalog.matchAll(/urlPath="(radarnowcasting\/[^"]*pcappi-0-rr[^"]*\.(\d{8})T(\d{6})Z\.nc)"/g)]
+    .map(([, path, day, time]) => ({
+      path,
+      time: new Date(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}T${time.slice(0, 2)}:${time.slice(2, 4)}:00Z`),
+    }))
+    .sort((first, second) => first.time - second.time);
+  if (!runs.length) throw new Error("no radar runs in the catalog");
+  const latest = runs.at(-1);
+  const runByTime = new Map(runs.map((run) => [run.time.getTime(), run]));
+  const [row0, column0] = WINDOW_ORIGIN;
+  const box = [[row0, row0 + MATRIX_SIZE - 1], [column0, column0 + MATRIX_SIZE - 1]];
+  const stepCount = SHORT_SPAN_MINUTES / RADAR_STEP_MINUTES; // 18
+
+  const pastTimes = Array.from({ length: stepCount + 1 }, (_, index) => new Date(latest.time - (stepCount - index) * RADAR_STEP_MINUTES * 60000));
+  const pastFrames = await Promise.all(pastTimes.map(async (time) => {
+    const run = runByTime.get(time.getTime());
+    if (!run) return new Float32Array(BYTES_PER_FRAME).fill(NaN); // run missing on the server
+    const response = await fetchWithTimeout(dapUrl(run.path, "lwe_precipitation_rate", [[0, 0], ...box]));
+    return parseDods(await response.arrayBuffer(), BYTES_PER_FRAME);
+  }));
+  const nowcast = parseDods(
+    await (await fetchWithTimeout(dapUrl(latest.path, "lwe_precipitation_rate", [[1, stepCount], ...box]))).arrayBuffer(),
+    stepCount * BYTES_PER_FRAME);
+  const futureFrames = Array.from({ length: stepCount }, (_, index) => nowcast.slice(index * BYTES_PER_FRAME, (index + 1) * BYTES_PER_FRAME));
+  const futureTimes = futureFrames.map((_, index) => new Date(latest.time.getTime() + (index + 1) * RADAR_STEP_MINUTES * 60000));
+
+  // MET Nordic hourly forecast: step 0 has no accumulation, 1..56 are mm in the past hour.
+  const nordicRows = [NORDIC_ROW_FLIP - (row0 + MATRIX_SIZE - 1), NORDIC_ROW_FLIP - row0];
+  const nordicColumns = [column0 + NORDIC_COL_SHIFT, column0 + NORDIC_COL_SHIFT + MATRIX_SIZE - 1];
+  const nordic = parseDods(
+    await (await fetchWithTimeout(dapUrl(NORDIC_PATH, "precipitation_amount", [[1, LONG_SPAN_HOURS], nordicRows, nordicColumns]))).arrayBuffer(),
+    LONG_SPAN_HOURS * BYTES_PER_FRAME);
+  const forecastFrames = Array.from({ length: LONG_SPAN_HOURS }, (_, hourIndex) => {
+    const frame = new Float32Array(BYTES_PER_FRAME);
+    for (let row = 0; row < MATRIX_SIZE; row++) { // flip south→north rows to north-up
+      const sourceRow = MATRIX_SIZE - 1 - row;
+      frame.set(nordic.subarray(hourIndex * BYTES_PER_FRAME + sourceRow * MATRIX_SIZE, hourIndex * BYTES_PER_FRAME + (sourceRow + 1) * MATRIX_SIZE), row * MATRIX_SIZE);
+    }
+    return frame;
+  });
+  const timeText = await (await fetchWithTimeout(`${THREDDS}/dodsC/${NORDIC_PATH}.ascii?time%5B1:${LONG_SPAN_HOURS}%5D`)).text();
+  const timeLine = timeText.match(/time\[\d+\]\s*\n([^\n]+)/);
+  if (!timeLine) throw new Error("no forecast times");
+  const forecastTimes = timeLine[1].split(",").map((seconds) => new Date(Number(seconds) * 1000));
+
+  return {
+    radarTimes: [...pastTimes, ...futureTimes],
+    radarFrames: [...pastFrames, ...futureFrames],
+    forecastTimes,
+    forecastFrames,
+    source: "live",
+    sourceNote: `Live · run ${latest.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+  };
+}
+
+/** Smooth value noise in 0..1 from integer-lattice hashes. */
+function hashNoise(x, y, seed) {
+  const hash = (ix, iy) => {
+    const value = Math.sin(ix * 127.1 + iy * 311.7 + seed * 74.7) * 43758.5453;
+    return value - Math.floor(value);
+  };
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const top = hash(ix, iy) + (hash(ix + 1, iy) - hash(ix, iy)) * sx;
+  const bottom = hash(ix, iy + 1) + (hash(ix + 1, iy + 1) - hash(ix, iy + 1)) * sx;
+  return top + (bottom - top) * sy;
+}
+
+function texture(x, y, seed) {
+  return 0.6 * hashNoise(x / 9, y / 9, seed) + 0.3 * hashNoise(x / 4, y / 4, seed + 1) + 0.1 * hashNoise(x / 2, y / 2, seed + 2);
+}
+
+/** Synthetic rain in mm/h at LED (column, row) and `minutes` from now. Scenarios repeat so 3-day mode keeps getting weather. */
+const SCENARIOS = {
+  front(column, row, minutes) {
+    const SPEED = 0.45; // km per minute, about 27 km/h from the west
+    const PERIOD = 600; // a new front every 10 hours
+    const phase = (((minutes + PERIOD / 2) % PERIOD) + PERIOD) % PERIOD - PERIOD / 2; // -300..300, 0 = now
+    const frontColumn = 32 + phase * SPEED + (row - 32) * 0.35; // slanted band over the centre at now
+    const distance = column - frontColumn;
+    const band = Math.exp(-((distance / 9) ** 2)) * 4 + (distance < 0 && distance > -40 ? 0.6 : 0);
+    const drift = minutes * SPEED;
+    return band * (0.4 + texture(column - drift, row, 3) * 1.2);
+  },
+  showers(column, row, minutes) {
+    const drift = minutes * 0.5; // cells drift east-north-east at about 30 km/h
+    const field = texture(column - drift, row + drift * 0.3, 11 + Math.floor(minutes / 240) * 0.37);
+    const life = 0.5 + 0.5 * Math.sin(minutes / 70);
+    return Math.max(0, (field - 0.55) * 14 * life);
+  },
+  storm(column, row, minutes) {
+    const drift = minutes * 0.7;
+    const field = texture(column - drift, row + drift * 0.2, 29);
+    const core = Math.max(0, field - 0.63) * 70; // cells peak around 10-12 mm/h
+    return core + Math.max(0, field - 0.55) * 4; // light rain around each cell
+  },
+};
+
+function loadSynthetic(name) {
+  const generate = SCENARIOS[name];
+  const now = new Date(Math.floor(Date.now() / 300000) * 300000);
+  const makeFrame = (minutes) => {
+    const frame = new Float32Array(BYTES_PER_FRAME);
+    for (let row = 0; row < MATRIX_SIZE; row++) {
+      for (let column = 0; column < MATRIX_SIZE; column++) frame[row * MATRIX_SIZE + column] = generate(column, row, minutes);
+    }
+    return frame;
+  };
+  const shortOffsets = Array.from({ length: 37 }, (_, index) => (index - 18) * RADAR_STEP_MINUTES);
+  weather.radarTimes = shortOffsets.map((minutes) => new Date(now.getTime() + minutes * 60000));
+  weather.radarFrames = shortOffsets.map(makeFrame);
+  const hours = Array.from({ length: LONG_SPAN_HOURS }, (_, index) => index + 1);
+  weather.forecastTimes = hours.map((hour) => new Date(now.getTime() + hour * 3600000));
+  weather.forecastFrames = hours.map((hour) => makeFrame(hour * 60));
+  weather.source = "synthetic";
+  weather.sourceNote = "Synthetic weather";
+}
+
+let liveRefreshTimer = null;
+let loadGeneration = 0; // bumps on every load, so a slow live fetch cannot overwrite a newer choice
+async function loadWeather() {
+  clearTimeout(liveRefreshTimer);
+  const generation = ++loadGeneration;
+  if (settings.scenario !== "real") {
+    loadSynthetic(settings.scenario);
+    if (window.STOCKHOLM_SNAPSHOT) weather.land = Uint8Array.from(atob(window.STOCKHOLM_SNAPSHOT.land), (character) => character.charCodeAt(0));
+    updateBudget();
+    return;
+  }
+  if (!weather.radarFrames.length || weather.source === "synthetic") loadSnapshot(); // show something at once
+  updateBudget();
+  try {
+    const live = await loadLive();
+    if (generation !== loadGeneration) return; // a newer load started while this one was fetching
+    Object.assign(weather, live);
+    liveRefreshTimer = setTimeout(loadWeather, LIVE_REFRESH_MS);
+  } catch (error) {
+    if (generation !== loadGeneration) return;
+    if (!loadSnapshot()) {
+      weather.source = "none";
+      weather.sourceNote = "No data";
+    }
+  }
+  updateBudget();
+}
+
+// ---------------------------------------------------------------------------
+// Fader → time
+// ---------------------------------------------------------------------------
+
+/** Fader travel after dead zone and response curve, -1..1. */
+function getFaderTravel() {
+  const position = device.faderPosition;
+  const magnitude = Math.abs(position);
+  if (magnitude <= settings.deadZone) return 0; // inside the dead zone: now
+  let travel = Math.min(1, (magnitude - settings.deadZone) / (1 - settings.deadZone));
+  if (settings.curve === "fine") travel *= travel;
+  return Math.sign(position) * travel;
+}
+
+/**
+ * The frame to show for the current fader travel: two frames and a blend weight.
+ * ±90 min: radar frames at 5-minute steps. 3 days: now (radar) then hourly forecast, forward only.
+ */
+function getTimeSelection() {
+  const travel = getFaderTravel();
+  if (!device.isLongMode) {
+    const nowIndex = (weather.radarFrames.length - 1) / 2; // 18
+    const position = nowIndex + travel * nowIndex;
+    return pickFrames(weather.radarFrames, weather.radarTimes, position, travel * SHORT_SPAN_MINUTES, "min");
+  }
+  const forwardTravel = Math.max(0, travel); // pulling left in 3-day mode stays at now
+  const nowRadarIndex = (weather.radarFrames.length - 1) / 2;
+  const frames = [weather.radarFrames[nowRadarIndex], ...weather.forecastFrames];
+  const times = [weather.radarTimes[nowRadarIndex], ...weather.forecastTimes];
+  const hours = forwardTravel * weather.forecastFrames.length;
+  return pickFrames(frames, times, hours, hours * 60, "hour", travel < 0);
+}
+
+function pickFrames(frames, times, position, offsetMinutes, unit, isPushingPastLimit = false) {
+  const clamped = Math.max(0, Math.min(frames.length - 1, position));
+  const lower = Math.floor(clamped);
+  const upper = Math.min(frames.length - 1, lower + 1);
+  const weight = settings.blend ? clamped - lower : (clamped - lower >= 0.5 ? 1 : 0);
+  const nearest = weight >= 0.5 ? upper : lower;
+  const stepMinutes = unit === "min" ? RADAR_STEP_MINUTES : 60;
+  return {
+    lower: frames[lower], upper: frames[upper], weight,
+    time: times[nearest],
+    offsetMinutes: Math.round(offsetMinutes / stepMinutes) * stepMinutes,
+    unit, isPushingPastLimit,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Drawing the matrix
+// ---------------------------------------------------------------------------
+
+function setLed(column, row, color, intensity = 1) {
+  if (column < 0 || row < 0 || column >= MATRIX_SIZE || row >= MATRIX_SIZE) return; // off the matrix
+  const offset = (row * MATRIX_SIZE + column) * 3;
+  framebuffer[offset] = color[0] * intensity;
+  framebuffer[offset + 1] = color[1] * intensity;
+  framebuffer[offset + 2] = color[2] * intensity;
+}
+
+function getRainColor(rate) {
+  let color = null;
+  for (const step of RAIN_STEPS) if (rate >= step.minimum) color = step.color;
+  return color; // null when dry
+}
+
+// 3x5 LED font for the readout
+const GLYPH_COLUMNS = 3;
+const TINY_FONT = {
+  0: ["###", "#.#", "#.#", "#.#", "###"], 1: [".#.", "##.", ".#.", ".#.", "###"],
+  2: ["###", "..#", "###", "#..", "###"], 3: ["###", "..#", "###", "..#", "###"],
+  4: ["#.#", "#.#", "###", "..#", "..#"], 5: ["###", "#..", "###", "..#", "###"],
+  6: ["###", "#..", "###", "#.#", "###"], 7: ["###", "..#", "..#", "..#", "..#"],
+  8: ["###", "#.#", "###", "#.#", "###"], 9: ["###", "#.#", "###", "..#", "###"],
+  "+": ["...", ".#.", "###", ".#.", "..."], "-": ["...", "...", "###", "...", "..."],
+  ":": [".", "#", ".", "#", "."], "'": ["#", "#", ".", ".", "."], "±": [".#.", "###", ".#.", "...", "###"],
+  H: ["#.#", "#.#", "###", "#.#", "#.#"], M: ["#.#", "###", "###", "#.#", "#.#"],
+  D: ["##.", "#.#", "#.#", "#.#", "##."], A: ["###", "#.#", "###", "#.#", "#.#"],
+  Y: ["#.#", "#.#", ".#.", ".#.", ".#."], S: ["###", "#..", "###", "..#", "###"],
+  I: ["###", ".#.", ".#.", ".#.", "###"], N: ["##.", "#.#", "#.#", "#.#", "#.#"],
+  " ": ["..", "..", "..", "..", ".."],
+};
+
+function measureText(text) {
+  return [...text].reduce((width, character) => width + (TINY_FONT[character]?.[0].length ?? GLYPH_COLUMNS) + 1, -1);
+}
+
+/** Draw text with a dark backing box so it reads over rain. */
+function drawTextBox(text, leftColumn, topRow, color) {
+  const width = measureText(text);
+  for (let row = topRow - 1; row <= topRow + 5; row++) {
+    for (let column = leftColumn - 1; column <= leftColumn + width; column++) setLed(column, row, [0, 0, 0]);
+  }
+  let column = leftColumn;
+  for (const character of text) {
+    const glyph = TINY_FONT[character];
+    if (!glyph) { column += GLYPH_COLUMNS + 1; continue; } // unknown character: leave a gap
+    glyph.forEach((glyphRow, glyphRowIndex) => {
+      [...glyphRow].forEach((cell, glyphColumnIndex) => {
+        if (cell === "#") setLed(column + glyphColumnIndex, topRow + glyphRowIndex, color);
+      });
+    });
+    column += glyph[0].length + 1;
+  }
+}
+
+function formatOffset(selection) {
+  const minutes = selection.offsetMinutes;
+  if (selection.unit === "min") return `${minutes > 0 ? "+" : "-"}${Math.abs(minutes)}'`; // ' marks minutes, e.g. +35'
+  const hours = Math.round(minutes / 60);
+  return hours >= 24 && hours % 24 === 0 ? `+${hours / 24}D` : `+${hours}H`;
+}
+
+function drawMatrix() {
+  framebuffer.fill(0);
+  if (!weather.radarFrames.length) return; // nothing loaded yet
+  const selection = getTimeSelection();
+
+  // Base layer and rain.
+  for (let index = 0; index < BYTES_PER_FRAME; index++) {
+    const lowerRate = selection.lower[index];
+    const upperRate = selection.upper[index];
+    const rate = Number.isNaN(lowerRate) || Number.isNaN(upperRate)
+      ? (selection.weight < 0.5 ? lowerRate : upperRate)
+      : lowerRate + (upperRate - lowerRate) * selection.weight;
+    shownRain[index] = rate;
+    const column = index % MATRIX_SIZE;
+    const row = Math.floor(index / MATRIX_SIZE);
+    if (Number.isNaN(rate)) {
+      if ((column + row) % 2 === 0) setLed(column, row, NO_COVERAGE_GREY); // checkerboard: radar has no view here
+      continue;
+    }
+    const rainColor = getRainColor(rate);
+    if (rainColor) setLed(column, row, rainColor);
+    else if (weather.land[index] && settings.landGlow > 0) setLed(column, row, LAND_AMBER, settings.landGlow);
+  }
+
+  // Towns.
+  const isBlinkOn = device.clock % 1 < 0.7; // green 70 % of each second
+  for (const town of TOWNS) {
+    const index = town.row * MATRIX_SIZE + town.column;
+    const isRainy = getRainColor(shownRain[index]) !== null;
+    if (isRainy && (settings.townUnderRain === "rain" || (settings.townUnderRain === "blink" && !isBlinkOn))) continue; // show the rain
+    setLed(town.column, town.row, TOWN_GREEN, town.isCentre ? Math.min(1, settings.townBrightness * 2) : settings.townBrightness);
+  }
+
+  // Time bar on the top row, right above the readout: centre = now, matching the fader.
+  const travel = getFaderTravel();
+  if (settings.timeBar) {
+    const barRow = 0;
+    const centre = MATRIX_SIZE / 2;
+    const cursor = Math.round(centre + (device.isLongMode ? Math.max(0, travel) : travel) * (centre - 1));
+    for (let column = 0; column < MATRIX_SIZE; column++) setLed(column, barRow, [0, 0, 0]);
+    const first = Math.min(centre, cursor), last = Math.max(centre, cursor);
+    for (let column = first; column <= last; column++) setLed(column, barRow, column < centre ? TIMEBAR_PAST : TIMEBAR_FUTURE, 0.35);
+    setLed(centre, barRow, TIMEBAR_PAST, 0.6);
+    setLed(cursor, barRow, TIMEBAR_CURSOR);
+    if (selection.isPushingPastLimit && device.clock % 0.4 < 0.2) setLed(centre - 1, barRow, READOUT_AMBER); // 3-day mode has no past
+  }
+
+  // Readouts: the mode name after a flip, else the time while the fader is off centre.
+  if (device.clock < device.modeFlashUntil) {
+    drawTextBox(device.isLongMode ? "3 DAYS" : "±90 MIN", 2, 2, READOUT_AMBER);
+  } else if (travel !== 0 && settings.readout !== "off" && !(device.isLongMode && travel < 0)) {
+    if (settings.readout !== "clock") drawTextBox(formatOffset(selection), 2, 2, READOUT_AMBER); // top left
+    if (settings.readout !== "offset") {
+      const clock = selection.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+      drawTextBox(clock, MATRIX_SIZE - 2 - measureText(clock), 2, READOUT_AMBER); // top right
+    }
+  }
+
+  // Global brightness cap, as the firmware would apply it.
+  for (let index = 0; index < framebuffer.length; index++) framebuffer[index] *= settings.brightness;
+  lastSelection = selection;
+}
+let lastSelection = null;
+
+// ---------------------------------------------------------------------------
+// Matrix rendering (LED dots with glow)
+// ---------------------------------------------------------------------------
+
+const matrixCanvas = document.getElementById("matrix");
+const matrixContext = matrixCanvas.getContext("2d");
+const glowCanvas = document.createElement("canvas");
+glowCanvas.width = glowCanvas.height = MATRIX_SIZE;
+const glowContext = glowCanvas.getContext("2d");
+const glowImage = glowContext.createImageData(MATRIX_SIZE, MATRIX_SIZE);
+const darkLedLayer = document.createElement("canvas");
+const supportsCanvasFilter = "filter" in matrixContext;
+const screenState = { pixelSize: 0, ledPitch: 0, milliamps: 0 };
+
+function resizeMatrixCanvas() {
+  const pixelRatio = window.devicePixelRatio || 1;
+  const pixelSize = Math.max(MATRIX_SIZE, Math.round(matrixCanvas.clientWidth * pixelRatio));
+  if (pixelSize === screenState.pixelSize) return; // size did not change
+  screenState.pixelSize = pixelSize;
+  screenState.ledPitch = pixelSize / MATRIX_SIZE;
+  matrixCanvas.width = matrixCanvas.height = pixelSize;
+  darkLedLayer.width = darkLedLayer.height = pixelSize;
+  const darkContext = darkLedLayer.getContext("2d");
+  darkContext.fillStyle = BOARD_COLOUR;
+  darkContext.fillRect(0, 0, pixelSize, pixelSize);
+  darkContext.fillStyle = DARK_LED_COLOUR;
+  const dotRadius = screenState.ledPitch * LED_DOT_RADIUS;
+  for (let row = 0; row < MATRIX_SIZE; row++) {
+    for (let column = 0; column < MATRIX_SIZE; column++) {
+      darkContext.beginPath();
+      darkContext.arc((column + 0.5) * screenState.ledPitch, (row + 0.5) * screenState.ledPitch, dotRadius, 0, Math.PI * 2);
+      darkContext.fill();
+    }
+  }
+}
+
+function renderMatrix() {
+  const pixels = glowImage.data;
+  let milliamps = 0;
+  for (let ledIndex = 0; ledIndex < MATRIX_SIZE * MATRIX_SIZE; ledIndex++) {
+    const red = Math.min(255, framebuffer[ledIndex * 3]);
+    const green = Math.min(255, framebuffer[ledIndex * 3 + 1]);
+    const blue = Math.min(255, framebuffer[ledIndex * 3 + 2]);
+    milliamps += IDLE_MILLIAMPS_PER_LED + ((red + green + blue) / 255) * MILLIAMPS_PER_CHANNEL;
+    pixels[ledIndex * 4] = 255 * Math.pow(red / 255, DISPLAY_GAMMA);
+    pixels[ledIndex * 4 + 1] = 255 * Math.pow(green / 255, DISPLAY_GAMMA);
+    pixels[ledIndex * 4 + 2] = 255 * Math.pow(blue / 255, DISPLAY_GAMMA);
+    pixels[ledIndex * 4 + 3] = 255;
+  }
+  screenState.milliamps = milliamps;
+  glowContext.putImageData(glowImage, 0, 0);
+
+  const { pixelSize, ledPitch } = screenState;
+  matrixContext.globalCompositeOperation = "source-over";
+  matrixContext.globalAlpha = 1;
+  matrixContext.drawImage(darkLedLayer, 0, 0);
+
+  matrixContext.globalCompositeOperation = "lighter";
+  matrixContext.imageSmoothingEnabled = true;
+  if (supportsCanvasFilter) matrixContext.filter = `blur(${ledPitch * 0.9}px)`;
+  matrixContext.globalAlpha = 0.85;
+  matrixContext.drawImage(glowCanvas, 0, 0, pixelSize, pixelSize);
+  if (supportsCanvasFilter) matrixContext.filter = "none";
+  matrixContext.globalAlpha = 1;
+
+  const LIT_THRESHOLD = 6; // channel sum below 6 counts as off
+  const dotRadius = ledPitch * LED_DOT_RADIUS;
+  for (let ledIndex = 0; ledIndex < MATRIX_SIZE * MATRIX_SIZE; ledIndex++) {
+    const red = pixels[ledIndex * 4];
+    const green = pixels[ledIndex * 4 + 1];
+    const blue = pixels[ledIndex * 4 + 2];
+    if (red + green + blue < LIT_THRESHOLD) continue; // dark LED, already on the base layer
+    const column = ledIndex % MATRIX_SIZE;
+    const row = Math.floor(ledIndex / MATRIX_SIZE);
+    matrixContext.fillStyle = `rgb(${red},${green},${blue})`;
+    matrixContext.beginPath();
+    matrixContext.arc((column + 0.5) * ledPitch, (row + 0.5) * ledPitch, dotRadius, 0, Math.PI * 2);
+    matrixContext.fill();
+  }
+  matrixContext.globalCompositeOperation = "source-over";
+}
+
+// ---------------------------------------------------------------------------
+// Input: fader (pointer, keys, gamepad) and mode switch
+// ---------------------------------------------------------------------------
+
+const faderCanvas = document.getElementById("fader");
+const faderContext = faderCanvas.getContext("2d");
+const FADER_MARGIN = 26; // CSS px from each end of the canvas to the end of knob travel
+const KEY_PUSH_PER_SECOND = 1.1; // a held arrow key pushes the knob across its half-travel in about 0.9 s
+const fader = { pointerId: null, heldKeyDirection: 0 };
+const pressedKeys = new Set();
+const gamepadState = { position: 0, isActive: false, wasButtonDown: false };
+
+function setFaderFromPointer(event) {
+  const bounds = faderCanvas.getBoundingClientRect();
+  const halfTravel = bounds.width / 2 - FADER_MARGIN;
+  device.faderPosition = Math.max(-1, Math.min(1, (event.clientX - (bounds.left + bounds.width / 2)) / halfTravel));
+  device.faderVelocity = 0;
+}
+
+faderCanvas.addEventListener("pointerdown", (event) => {
+  faderCanvas.setPointerCapture(event.pointerId);
+  fader.pointerId = event.pointerId;
+  setFaderFromPointer(event);
+});
+faderCanvas.addEventListener("pointermove", (event) => {
+  if (event.pointerId === fader.pointerId) setFaderFromPointer(event);
+});
+function releaseFader(event) {
+  if (event.pointerId === fader.pointerId) fader.pointerId = null; // the spring takes over
+}
+faderCanvas.addEventListener("pointerup", releaseFader);
+faderCanvas.addEventListener("pointercancel", releaseFader);
+
+function isFormControl(target) {
+  return target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
+}
+
+window.addEventListener("keydown", (event) => {
+  if (isFormControl(event.target)) return; // let sliders and menus keep their own keys
+  if (["ArrowLeft", "ArrowRight", "KeyA", "KeyD"].includes(event.code)) {
+    event.preventDefault();
+    pressedKeys.add(event.code);
+  } else if (event.code === "KeyS" && !event.repeat) {
+    flipModeSwitch();
+  }
+});
+window.addEventListener("keyup", (event) => pressedKeys.delete(event.code));
+window.addEventListener("blur", () => pressedKeys.clear());
+
+function pollGamepad() {
+  let gamepads = [];
+  try {
+    gamepads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  } catch (error) {
+    gamepads = []; // the frame may refuse gamepad access
+  }
+  const gamepad = gamepads[0];
+  if (!gamepad) { gamepadState.isActive = false; return; }
+  const axis = gamepad.axes[0] ?? 0;
+  gamepadState.isActive = Math.abs(axis) > 0.08;
+  gamepadState.position = axis;
+  const isButtonDown = gamepad.buttons.some((button) => button.pressed);
+  if (isButtonDown && !gamepadState.wasButtonDown) flipModeSwitch();
+  gamepadState.wasButtonDown = isButtonDown;
+}
+
+/** Move the knob: held by pointer, keys or stick, otherwise the spring pulls it to centre. */
+function advanceFader(deltaSeconds) {
+  const keyDirection = (pressedKeys.has("ArrowRight") || pressedKeys.has("KeyD") ? 1 : 0) - (pressedKeys.has("ArrowLeft") || pressedKeys.has("KeyA") ? 1 : 0);
+  if (fader.pointerId !== null) return; // a finger holds the knob
+  if (keyDirection !== 0) {
+    device.faderPosition = Math.max(-1, Math.min(1, device.faderPosition + keyDirection * KEY_PUSH_PER_SECOND * deltaSeconds));
+    device.faderVelocity = 0;
+    return;
+  }
+  if (gamepadState.isActive) {
+    device.faderPosition = gamepadState.position;
+    device.faderVelocity = 0;
+    return;
+  }
+  // Critically damped spring: reaches centre in about `returnSeconds` without overshoot.
+  const stiffness = (4.5 / settings.returnSeconds) ** 2;
+  const damping = 2 * Math.sqrt(stiffness);
+  const acceleration = -stiffness * device.faderPosition - damping * device.faderVelocity;
+  device.faderVelocity += acceleration * deltaSeconds;
+  device.faderPosition += device.faderVelocity * deltaSeconds;
+  if (Math.abs(device.faderPosition) < 0.002 && Math.abs(device.faderVelocity) < 0.01) {
+    device.faderPosition = 0;
+    device.faderVelocity = 0;
+  }
+}
+
+const modeSwitch = document.getElementById("mode-switch");
+function setLongMode(isLongMode, shouldFlash = true) {
+  device.isLongMode = isLongMode;
+  modeSwitch.setAttribute("aria-checked", String(isLongMode));
+  document.getElementById("switch-label-short").classList.toggle("on", !isLongMode);
+  document.getElementById("switch-label-long").classList.toggle("on", isLongMode);
+  const MODE_FLASH_SECONDS = 1.2; // the matrix names the new mode for 1.2 s
+  if (shouldFlash) device.modeFlashUntil = device.clock + MODE_FLASH_SECONDS;
+  const scale = document.getElementById("fader-scale");
+  scale.replaceChildren(...(isLongMode
+    ? [["span", "(no past)"], ["b", "now"], ["span", `+${LONG_SPAN_HOURS} h`]]
+    : [["span", `−${SHORT_SPAN_MINUTES} min`], ["b", "now"], ["span", `+${SHORT_SPAN_MINUTES} min`]]
+  ).map(([tag, text]) => Object.assign(document.createElement(tag), { textContent: text })));
+  document.getElementById("fader-hint").textContent = isLongMode
+    ? "3-day mode looks forward only, as on yr.no. Push right for the hourly forecast."
+    : "Drag the knob. Let go and it springs back to now.";
+  updateBudget();
+}
+function flipModeSwitch() { setLongMode(!device.isLongMode); }
+modeSwitch.addEventListener("click", flipModeSwitch);
+document.getElementById("switch-label-short").addEventListener("click", () => setLongMode(false));
+document.getElementById("switch-label-long").addEventListener("click", () => setLongMode(true));
+
+// ---------------------------------------------------------------------------
+// Fader drawing
+// ---------------------------------------------------------------------------
+
+const themeColors = (() => {
+  const style = getComputedStyle(document.documentElement);
+  const read = (name) => style.getPropertyValue(name).trim();
+  return { accent: read("--accent"), accentDim: read("--accent-dim"), line: read("--line"), bezel: read("--bezel"), muted: read("--muted"), fg: read("--fg") };
+})();
+
+function drawFader() {
+  const pixelRatio = window.devicePixelRatio || 1;
+  const width = faderCanvas.clientWidth;
+  const height = faderCanvas.clientHeight;
+  if (faderCanvas.width !== Math.round(width * pixelRatio)) {
+    faderCanvas.width = Math.round(width * pixelRatio);
+    faderCanvas.height = Math.round(height * pixelRatio);
+  }
+  const context = faderContext;
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  const centreX = width / 2;
+  const trackY = height / 2;
+  const halfTravel = width / 2 - FADER_MARGIN;
+
+  // Slot.
+  context.fillStyle = themeColors.bezel;
+  context.strokeStyle = themeColors.line;
+  context.lineWidth = 1;
+  context.beginPath();
+  context.roundRect(FADER_MARGIN - 8, trackY - 5, halfTravel * 2 + 16, 10, 5);
+  context.fill();
+  context.stroke();
+
+  // Ticks: every 30 min in ±90 mode, every 12 h in 3-day mode.
+  const tickCount = device.isLongMode ? Math.floor(LONG_SPAN_HOURS / 12) : 3;
+  context.strokeStyle = themeColors.muted;
+  for (let tick = -tickCount; tick <= tickCount; tick++) {
+    if (device.isLongMode && tick < 0) continue; // 3-day mode has no past
+    const share = device.isLongMode ? (tick * 12) / LONG_SPAN_HOURS : tick / 3;
+    const x = centreX + share * halfTravel;
+    context.beginPath();
+    context.moveTo(x, trackY + 12);
+    context.lineTo(x, trackY + (tick === 0 ? 22 : 17));
+    context.stroke();
+  }
+  // Dead zone.
+  if (settings.deadZone > 0) {
+    context.fillStyle = themeColors.accentDim;
+    context.fillRect(centreX - settings.deadZone * halfTravel, trackY - 2, settings.deadZone * halfTravel * 2, 4);
+  }
+  // Springs from each end to the knob.
+  const knobX = centreX + device.faderPosition * halfTravel;
+  context.strokeStyle = themeColors.muted;
+  context.lineWidth = 1.2;
+  for (const anchorX of [FADER_MARGIN - 4, FADER_MARGIN + halfTravel * 2 + 4]) {
+    const COILS = 10;
+    context.beginPath();
+    context.moveTo(anchorX, trackY);
+    for (let coil = 1; coil < COILS; coil++) {
+      const x = anchorX + ((knobX - anchorX) * coil) / COILS;
+      context.lineTo(x, trackY + (coil % 2 ? -7 : 7));
+    }
+    context.lineTo(knobX, trackY);
+    context.stroke();
+  }
+  // Knob.
+  context.fillStyle = themeColors.accent;
+  context.beginPath();
+  context.roundRect(knobX - 9, trackY - 20, 18, 40, 4);
+  context.fill();
+  context.fillStyle = themeColors.bezel;
+  context.fillRect(knobX - 6, trackY - 1, 12, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Panels
+// ---------------------------------------------------------------------------
+
+document.getElementById("legend").replaceChildren(...RAIN_STEPS.map((step) => {
+  const item = document.createElement("span");
+  const dot = document.createElement("i");
+  const [red, green, blue] = step.color.map((channel) => Math.round(255 * Math.pow(channel / 255, DISPLAY_GAMMA)));
+  dot.style.background = `rgb(${red},${green},${blue})`;
+  dot.style.boxShadow = `0 0 6px rgb(${red},${green},${blue})`;
+  item.append(dot, `${step.label} mm/h`);
+  return item;
+}));
+
+const townBody = document.getElementById("town-body");
+const townRainCells = TOWNS.map((town) => {
+  const tableRow = document.createElement("tr");
+  const cells = [town.name, String(town.column), String(town.row), "—"].map((text, cellIndex) => {
+    const cell = document.createElement("td");
+    cell.textContent = text;
+    if (cellIndex > 0) cell.className = "number";
+    tableRow.append(cell);
+    return cell;
+  });
+  townBody.append(tableRow);
+  return cells[3];
+});
+
+function updateBudget() {
+  const radarBytes = weather.radarFrames.length * BYTES_PER_FRAME;
+  const forecastBytes = weather.forecastFrames.length * BYTES_PER_FRAME;
+  document.getElementById("budget-note").textContent =
+    `${weather.radarFrames.length} radar frames (${(radarBytes / 1024).toFixed(0)} KB) + ${weather.forecastFrames.length} hourly forecast frames ` +
+    `(${(forecastBytes / 1024).toFixed(0)} KB) at one byte per LED. Firmware refreshes the radar every 5 minutes and the forecast every hour.`;
+}
+
+let lastHudUpdateAt = 0;
+let peakMilliamps = 0;
+function updateHud(now) {
+  peakMilliamps = Math.max(peakMilliamps, screenState.milliamps);
+  const HUD_INTERVAL_MS = 100; // refresh the status row ten times per second
+  if (now - lastHudUpdateAt < HUD_INTERVAL_MS) return; // too soon
+  lastHudUpdateAt = now;
+  const selection = lastSelection;
+  const travel = getFaderTravel();
+  const atNow = travel === 0 || (device.isLongMode && travel < 0);
+  const timeText = selection?.time ? selection.time.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+  document.getElementById("hud-time").textContent = timeText;
+  const offsetText = !selection || atNow ? "now" : selection.unit === "min"
+    ? `${selection.offsetMinutes > 0 ? "+" : "−"}${Math.abs(selection.offsetMinutes)} min`
+    : `+${Math.round(selection.offsetMinutes / 60)} h`;
+  document.getElementById("hud-offset").textContent = offsetText;
+  document.getElementById("fader-reading").textContent = atNow ? "Now" : offsetText;
+  document.getElementById("hud-source").textContent = weather.sourceNote || "—";
+  document.getElementById("hud-power").textContent = `${(screenState.milliamps / 1000).toFixed(2)} A · peak ${(peakMilliamps / 1000).toFixed(2)}`;
+  TOWNS.forEach((town, townIndex) => {
+    const rate = shownRain[town.row * MATRIX_SIZE + town.column];
+    townRainCells[townIndex].textContent = Number.isNaN(rate) ? "no radar" : rate < 0.1 ? "dry" : `${rate.toFixed(1)}`;
+  });
+}
+
+function bindRangeSetting(inputId, outputId, settingName, formatValue) {
+  const input = document.getElementById(inputId);
+  const output = document.getElementById(outputId);
+  input.value = String(settings[settingName]);
+  output.textContent = formatValue(settings[settingName]);
+  input.addEventListener("input", () => {
+    settings[settingName] = Number(input.value);
+    output.textContent = formatValue(settings[settingName]);
+    if (settingName === "brightness") peakMilliamps = 0; // new cap, new peak
+  });
+}
+function bindSelectSetting(selectId, settingName, onChange) {
+  const select = document.getElementById(selectId);
+  select.value = settings[settingName];
+  select.addEventListener("change", () => {
+    settings[settingName] = select.value;
+    onChange?.();
+  });
+}
+const percent = (value) => `${Math.round(value * 100)} %`;
+bindRangeSetting("setting-brightness", "output-brightness", "brightness", percent);
+bindRangeSetting("setting-towns", "output-towns", "townBrightness", percent);
+bindRangeSetting("setting-coast", "output-coast", "landGlow", percent);
+bindRangeSetting("setting-return", "output-return", "returnSeconds", (value) => `${value.toFixed(2)} s`);
+bindRangeSetting("setting-deadzone", "output-deadzone", "deadZone", percent);
+bindSelectSetting("setting-scenario", "scenario", () => { peakMilliamps = 0; loadWeather(); });
+bindSelectSetting("setting-town-rain", "townUnderRain");
+bindSelectSetting("setting-curve", "curve");
+bindSelectSetting("setting-readout", "readout");
+document.getElementById("setting-timebar").addEventListener("change", (event) => { settings.timeBar = event.target.checked; });
+document.getElementById("setting-blend").addEventListener("change", (event) => { settings.blend = event.target.checked; });
+document.getElementById("reload-button").addEventListener("click", () => { peakMilliamps = 0; loadWeather(); });
+matrixCanvas.addEventListener("pointerdown", () => matrixCanvas.focus());
+
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
+
+let lastFrameTime = performance.now();
+function advanceFrame(now) {
+  const MAXIMUM_STEP_SECONDS = 0.05; // clamp long frames (tab switch) so the spring stays stable
+  const deltaSeconds = Math.min(MAXIMUM_STEP_SECONDS, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+  device.clock += deltaSeconds;
+  resizeMatrixCanvas();
+  pollGamepad();
+  advanceFader(deltaSeconds);
+  drawMatrix();
+  renderMatrix();
+  drawFader();
+  updateHud(now);
+  requestAnimationFrame(advanceFrame);
+}
+
+/** Boot, restoring the switch position and data choice after a live page update. */
+function startDevice(savedState) {
+  if (typeof savedState?.scenario === "string" && SCENARIOS[savedState.scenario] || savedState?.scenario === "real") {
+    settings.scenario = savedState.scenario;
+    document.getElementById("setting-scenario").value = settings.scenario;
+  }
+  setLongMode(Boolean(savedState?.isLongMode), false);
+  loadWeather();
+  requestAnimationFrame(advanceFrame);
+}
+
+window.claude?.hot?.snapshot?.(() => ({ isLongMode: device.isLongMode, scenario: settings.scenario }));
+if (window.claude?.hot?.ready) window.claude.hot.ready(startDevice);
+else startDevice(window.claude?.hot?.data ?? {});
+</script>
